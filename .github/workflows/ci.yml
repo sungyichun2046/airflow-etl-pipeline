@@ -1,0 +1,79 @@
+name: CI - Run Pytest and flake8
+
+# Prevent multiple runs on the same branch from running at the same time
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [ main ]         # Trigger CI on push to main branch
+  pull_request:
+    branches: [ main ]         # Trigger CI on PRs targeting main branch
+
+env:
+  DOCKERFILE: custom-airflow.Dockerfile
+  AIRFLOW__WEBSERVER__SECRET_KEY: test_secret_key
+  AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+  AIRFLOW__CORE__LOAD_EXAMPLES: False
+  AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+
+jobs:
+  test:
+    runs-on: ubuntu-latest     # Use latest Ubuntu runner
+
+    services:
+      postgres:
+        image: postgres:13     # Use Postgres 13 official image
+        ports:
+          - 5432/tcp           # Expose Postgres port internally in the runner network (do NOT map 5432:5432 to avoid conflicts)
+        env:
+          POSTGRES_USER: airflow
+          POSTGRES_PASSWORD: airflow
+          POSTGRES_DB: airflow
+        options: >-
+          --health-cmd="pg_isready -U airflow" 
+          --health-interval=10s 
+          --health-timeout=5s 
+          --health-retries=5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4    # Checkout repository code
+
+      - name: Fix permissions for data folder
+        run: chmod -R 777 ./data     # Fix folder permissions if needed
+
+      # NOTE: No need to manually start Postgres with docker compose up -d postgres
+      # The 'services' block above automatically starts and manages the Postgres container
+      # This avoids port conflicts and ensures proper lifecycle handling
+
+      - name: Initialize Airflow DB and create admin user
+        run: |
+          docker compose run --rm airflow-webserver airflow db init
+          docker compose run --rm airflow-webserver airflow users create \
+            --username admin \
+            --firstname Admin \
+            --lastname User \
+            --role Admin \
+            --email admin@example.com \
+            --password admin
+
+      - name: List DAGs to verify loading
+        run: docker compose run --rm airflow-webserver airflow dags list
+
+      - name: Wait for DAG registration
+        run: sleep 10                 # Give Airflow time to register DAGs
+
+      - name: Run tests with Pytest
+        env:
+          SKIP_END2END_TRIGGER: "true"
+        run: docker compose run --rm -e SKIP_END2END_TRIGGER=true airflow-webserver bash -c "PYTHONPATH=/opt/airflow pytest tests/"
+
+      - name: Lint with flake8
+        run: |
+          pip install flake8
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        continue-on-error: true        # Do not fail CI if lint errors found
+

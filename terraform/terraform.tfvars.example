@@ -1,0 +1,9 @@
+postgres_user       = "airflow"
+postgres_password   = "airflow_password"
+postgres_db         = "airflow"
+airflow_secret_key  = "super_secret_key"
+
+# Optionnel si tu veux customiser les ports
+airflow_webserver_port  = 8080
+airflow_image_name = "custom-airflow-image"
+postgres_image = "postgres:13"
