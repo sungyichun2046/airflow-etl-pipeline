@@ -1,0 +1,14 @@
+# Private Files
+data/listing_raw_technical_test.parquet
+data/processed.parquet
+
+# Env file
+.env
+
+# Terraform
+terraform/terraform.tfstate
+terraform/terraform.lock.hcl
+terraform/terraform.tfstate.backup
+terraform/terraform.tfvars
+terraform/.terraform.lock.hcl
+terraform/.terraform/
